@@ -43,7 +43,6 @@ colSums(is.na(heart_nomis)) # should all be 0
 dim(heart_nomis) # number of rows and columns after removal
 
 
-
 # Clean Gender
 table(heart_nomis$Gender, useNA = "ifany")
 
