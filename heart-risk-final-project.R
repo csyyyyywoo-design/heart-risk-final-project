@@ -5,6 +5,10 @@
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
+library(MASS)
+library(caret)
+library(pROC)
+library(randomForest)
 
 # Load data
 heart <- read.csv("heart-attack-risk-prediction-dataset.csv")
@@ -24,11 +28,11 @@ prop.table(table(heart$Heart.Attack.Risk..Binary.))
 colSums(is.na(heart)) # missing values in each column
 sum(!complete.cases(heart)) # number of incomplete rows
 
-# Save the incomplete rows
+# Save incomplete rows
 heart_missing <- heart[!complete.cases(heart), ] # pulls out those incomplete rows
 dim(heart_missing)
 
-# Check the missing-data pattern
+# Check missing-data pattern
 colSums(is.na(heart_missing)) # which columns are missing in the incomplete rows
 
 # Optional check:
@@ -38,14 +42,255 @@ nrow(unique(is.na(heart_missing)))
 # Remove incomplete rows
 heart_nomis <- na.omit(heart) # Removes rows whith at least one missing value
 
-# Check the cleaned data
+# Check cleaned data
 colSums(is.na(heart_nomis)) # should all be 0
 dim(heart_nomis) # number of rows and columns after removal
 
+# Check variable names
+names(heart_nomis)
 
-# Clean Gender
-table(heart_nomis$Gender, useNA = "ifany")
-
-# Turn Gender into a factor
+# Convert variables to factors
+heart_nomis$Diabetes <- as.factor(heart_nomis$Diabetes)
+heart_nomis$Family.History <- as.factor(heart_nomis$Family.History)
+heart_nomis$Smoking <- as.factor(heart_nomis$Smoking)
+heart_nomis$Obesity <- as.factor(heart_nomis$Obesity)
+heart_nomis$Alcohol.Consumption <- as.factor(heart_nomis$Alcohol.Consumption)
+heart_nomis$Diet <- as.factor(heart_nomis$Diet)
+heart_nomis$Previous.Heart.Problems <- as.factor(heart_nomis$Previous.Heart.Problems)
+heart_nomis$Medication.Use <- as.factor(heart_nomis$Medication.Use)
+heart_nomis$Heart.Attack.Risk..Binary. <- as.factor(heart_nomis$Heart.Attack.Risk..Binary.)
 heart_nomis$Gender <- as.factor(heart_nomis$Gender)
-str(heart_nomis$Gender)
+heart_nomis$Heart.Attack.Risk..Text. <- as.factor(heart_nomis$Heart.Attack.Risk..Text.)
+
+# Final structure check
+str(heart_nomis)
+
+# EDA
+# Bar plot for
+ggplot(heart_nomis, aes(x = Heart.Attack.Risk..Binary.)) +
+  geom_bar(fill = "steelblue") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.3)
+  labs(title = "Distribution of Heart Attack Risk",
+       x = "Heart Attack Risk",
+       y = "Count") +
+  scale_x_discrete(labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  theme_minimal()
+
+table(heart_nomis$Heart.Attack.Risk..Binary.)
+prop.table(table(heart_nomis$Heart.Attack.Risk..Binary.))
+
+# 
+ggplot(heart_nomis, aes(x = Gender, fill = Heart.Attack.Risk..Binary.)) +
+  geom_bar(position = "fill") +
+  labs(title = "Heart Attack Risk by Gender",
+       x = "Gender",
+       y = "Proportion",
+       fill = "Risk Group") +
+  scale_fill_discrete(labels = c("Low Risk", "High Risk")) +
+  theme_minimal()
+
+table(heart_nomis$Gender, heart_nomis$Heart.Attack.Risk..Binary.)
+prop.table(table(heart_nomis$Gender, heart_nomis$Heart.Attack.Risk..Binary.), margin = 1)
+
+# Smoking vs Heart Attack Risk
+ggplot(heart_nomis, aes(x = Smoking, fill = Heart.Attack.Risk..Binary.)) +
+  geom_bar(position = "fill") +
+  labs(title = "Heart Attack Risk by Smoking Status",
+       x = "Smoking",
+       y = "Proportion",
+       fill = "Risk Group") +
+  scale_x_discrete(labels = c("0" = "Non-Smoker", "1" = "Smoker")) +
+  scale_fill_manual(values = c("0" = "steelblue", "1" = "tomato"),
+                    labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  theme_minimal()
+
+prop.table(table(heart_nomis$Smoking, heart_nomis$Heart.Attack.Risk..Binary.), margin = 1)
+
+#
+ggplot(heart_nomis, aes(x = Diabetes, fill = Heart.Attack.Risk..Binary.)) +
+  geom_bar(position = "fill") +
+  labs(title = "Heart Attack Risk by Diabetes Status",
+       x = "Diabetes",
+       y = "Proportion",
+       fill = "Risk Group") +
+  scale_x_discrete(labels = c("0" = "No Diabetes", "1" = "Diabetes")) +
+  scale_fill_manual(values = c("0" = "steelblue", "1" = "tomato"),
+                    labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  theme_minimal()
+
+prop.table(table(heart_nomis$Diabetes, heart_nomis$Heart.Attack.Risk..Binary.), margin = 1)
+
+#
+ggplot(heart_nomis, aes(x = Heart.Attack.Risk..Binary., y = Cholesterol, fill = Heart.Attack.Risk..Binary.)) +
+  geom_boxplot() +
+  labs(title = "Cholesterol by Heart Attack Risk",
+       x = "Heart Attack Risk",
+       y = "Cholesterol") +
+  scale_x_discrete(labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  scale_fill_manual(values = c("0" = "steelblue", "1" = "tomato"),
+                    labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  theme_minimal()
+
+#
+library(caret)
+set.seed(123) # get the same train/test split again
+
+# Create the row numbers for the training set
+train_index <- createDataPartition(heart_nomis$Heart.Attack.Risk..Binary.,
+                                   p = 0.7,
+                                   list = FALSE)
+
+train_data <- heart_nomis[train_index, ] # gets the selected rows
+test_data <- heart_nomis[-train_index, ] # gets everything else
+
+# Check dimensions and proportions
+dim(train_data)
+dim(test_data)
+prop.table(table(train_data$Heart.Attack.Risk..Binary.))
+prop.table(table(test_data$Heart.Attack.Risk..Binary.))
+
+full_model <- glm(Heart.Attack.Risk..Binary. ~ Age + Cholesterol + Heart.rate +
+                    Diabetes + Family.History + Smoking + Obesity +
+                    Alcohol.Consumption + Exercise.Hours.Per.Week + Diet +
+                    Previous.Heart.Problems + Medication.Use + Stress.Level +
+                    Sedentary.Hours.Per.Day + Income + BMI + Triglycerides +
+                    Physical.Activity.Days.Per.Week + Sleep.Hours.Per.Day +
+                    Blood.sugar + CK.MB + Troponin + Gender +
+                    Systolic.blood.pressure + Diastolic.blood.pressure,
+                  data = train_data,
+                  family = binomial)
+
+summary(full_model)
+
+# Odds ratios
+exp(coef(full_model))
+
+# Run step AIC
+library(MASS)
+step_model <- stepAIC(full_model, direction = "both", trace = FALSE)
+summary(step_model)
+AIC(full_model, step_model)
+
+# Get predicted probabilities on test data
+test_data$pred_prob <- predict(step_model, newdata = test_data, type = "response")
+head(test_data$pred_prob)
+
+# Turn probabilities into predicted classes
+test_data$pred_class <- ifelse(test_data$pred_prob > 0.5, "1", "0")
+test_data$pred_class <- factor(test_data$pred_class, levels = c("0", "1"))
+
+# Confusion matrix
+confusionMatrix(test_data$pred_class, test_data$Heart.Attack.Risk..Binary.)
+
+library(pROC)
+roc_obj <- roc(test_data$Heart.Attack.Risk..Binary., test_data$pred_prob)
+auc(roc_obj)
+
+small_model <- glm(Heart.Attack.Risk..Binary. ~ Cholesterol + Systolic.blood.pressure,
+                   data = train_data,
+                   family = binomial)
+
+summary(small_model)
+
+test_data$small_prob <- predict(small_model, newdata = test_data, type = "response")
+head(test_data$small_prob)
+
+test_data$small_class <- ifelse(test_data$small_prob > 0.5, "1", "0")
+test_data$small_class <- factor(test_data$small_class, levels = c("0", "1"))
+
+confusionMatrix(test_data$small_class, test_data$Heart.Attack.Risk..Binary.)
+
+small_roc <- roc(test_data$Heart.Attack.Risk..Binary., test_data$small_prob)
+auc(small_roc)
+
+# ROC curve
+plot(roc_obj, main = "ROC Curve for Step Logistic Regression Model")
+abline(a = 0, b = 1, lty = 2)
+
+# histogram of predicted probabilities
+ggplot(test_data, aes(x = pred_prob, fill = Heart.Attack.Risk..Binary.)) +
+  geom_histogram(binwidth = 0.02, alpha = 0.6, position = "identity") +
+  geom_vline(xintercept = 0.5, linetype = "dashed", linewidth = 1) +
+  labs(title = "Predicted Probabilities by Actual Risk Group",
+       x = "Predicted Probability of High Risk",
+       y = "Count",
+       fill = "Actual Risk") +
+  scale_fill_manual(values = c("0" = "steelblue", "1" = "tomato"),
+                    labels = c("0" = "Low Risk", "1" = "High Risk")) +
+  theme_minimal()
+
+# coefficient / odds ratio plot
+exp(coef(step_model))
+coef_df <- data.frame(
+  term = names(coef(step_model)),
+  estimate = coef(step_model)
+)
+
+ggplot(coef_df[-1, ], aes(x = reorder(term, estimate), y = estimate)) +
+  geom_point() +
+  coord_flip() +
+  labs(title = "Logistic Regression Coefficients (Step Model)",
+       x = "Predictor",
+       y = "Coefficient Estimate") +
+  theme_minimal()
+
+# Try random forest model
+set.seed(123)
+
+rf_model <- randomForest(
+  Heart.Attack.Risk..Binary. ~ Age + Cholesterol + Heart.rate +
+    Diabetes + Family.History + Smoking + Obesity +
+    Alcohol.Consumption + Exercise.Hours.Per.Week + Diet +
+    Previous.Heart.Problems + Medication.Use + Stress.Level +
+    Sedentary.Hours.Per.Day + Income + BMI + Triglycerides +
+    Physical.Activity.Days.Per.Week + Sleep.Hours.Per.Day +
+    Blood.sugar + CK.MB + Troponin + Gender +
+    Systolic.blood.pressure + Diastolic.blood.pressure,
+  data = train_data,
+  ntree = 500,
+  importance = TRUE
+)
+print(rf_model)
+
+rf_pred <- predict(rf_model, newdata = test_data)
+head(rf_pred)
+
+rf_prob <- predict(rf_model, newdata = test_data, type = "prob")
+head(rf_prob)
+rf_prob_1 <- rf_prob[, "1"]
+head(rf_prob_1)
+
+confusionMatrix(rf_pred, test_data$Heart.Attack.Risk..Binary.)
+
+rf_prob_1 <- predict(rf_model, newdata = test_data, type = "prob")[, "1"]
+rf_roc <- roc(test_data$Heart.Attack.Risk..Binary., rf_prob_1)
+plot(rf_roc,
+     main = "ROC Curve for Random Forest",
+     col = "blue",
+     lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+auc(rf_roc)
+
+# Compare two auc curve
+logit_roc <- roc(test_data$Heart.Attack.Risk..Binary., test_data$pred_prob)
+rf_roc <- roc(test_data$Heart.Attack.Risk..Binary., rf_prob_1)
+
+plot(logit_roc,
+     col = "red",
+     lwd = 2,
+     main = "ROC Curves: Logistic Regression vs Random Forest")
+
+plot(rf_roc,
+     col = "blue",
+     lwd = 2,
+     add = TRUE)
+
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+legend("bottomright",
+       legend = c(
+         paste("Logistic Regression AUC =", round(auc(logit_roc), 3)),
+         paste("Random Forest AUC =", round(auc(rf_roc), 3))
+       ),
+       col = c("red", "blue"),
+       lwd = 2)
