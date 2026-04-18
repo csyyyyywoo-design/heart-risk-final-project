@@ -1,0 +1,116 @@
+
+
+library(tidyverse); library(patchwork); library(MASS)
+theme_set(theme_minimal()); theme_update(panel.grid.minor = element_blank())
+
+data <- read.csv("C:/Users/schlu/OneDrive/Desktop/heart_attack.csv")
+heart_nomis <- na.omit(data) # Removes every row that has at leat one missing value
+
+# Check if classes are imbalanced
+
+table(heart_nomis$Heart.Attack.Risk..Binary)
+prop.table(table(heart_nomis$Heart.Attack.Risk..Binary))
+
+barplot(table(heart_nomis$Heart.Attack.Risk..Binary))
+
+# The response variable is imbalanced. There are more 0s than 1s. 
+
+# Gender 
+
+gender_prop <- table(heart_nomis$Gender, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(gender_prop) <- list(
+  Gender = c("Female", "Male"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+gender_prop
+
+# Diabetes
+
+diabetes_prop <- table(heart_nomis$Diabetes, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(diabetes_prop) <- list(
+  Diabetes = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+diabetes_prop
+
+
+# Smoking
+
+smoking_prop <- table(heart_nomis$Smoking, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(smoking_prop) <- list(
+  Smoking = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+smoking_prop
+
+# Obesity
+
+obesity_prop <- table(heart_nomis$Obesity, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(obesity_prop) <- list(
+  Obesity = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+obesity_prop
+
+# Alcohol
+
+alcohol_prop <- table(heart_nomis$Alcohol.Consumption, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(alcohol_prop) <- list(
+  Alcohol = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+alcohol_prop
+
+# Diet 
+
+# Previous Heart Problems
+
+previous_prop <- table(heart_nomis$Previous.Heart.Problems, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(previous_prop) <- list(
+  Previous = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+previous_prop
+
+
+# use step AIC to find best model
+
+full_model <- glm(Heart.Attack.Risk..Binary. ~ .,
+                  data = heart_nomis,
+                  family = binomial)
+
+step_model <- stepAIC(full_model,
+                      direction = "both",
+                      trace = TRUE)
+
+
+# See auc and roc of the best model from step aic 
+
+library(pROC)
+
+best_model <- glm(
+  Heart.Attack.Risk..Binary. ~ Cholesterol + Sleep.Hours.Per.Day +
+    Heart.Attack.Risk..Text. + Systolic.blood.pressure,
+  data = data,
+  family = binomial
+)
+
+pred_probs <- predict(best_model, type = "response")
+
+roc_obj <- roc(data$Heart.Attack.Risk..Binary, pred_probs)
+
+auc(roc_obj)
+
+plot(roc_obj, col = "blue", main = "ROC Curve for Best Logistic Model")
