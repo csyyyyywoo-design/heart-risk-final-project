@@ -18,6 +18,18 @@ data$Gender <- factor(data$Gender)
 # Target
 data$Heart.Attack.Risk..Binary. <- as.factor(data$Heart.Attack.Risk..Binary.)
 
+# For similarity matching (kNN-style lookup) 
+similarity_vars <- c(
+  "Age", "Cholesterol", "Heart.rate",
+  "BMI", "Triglycerides", "Blood.sugar",
+  "CK.MB", "Troponin"
+)
+
+similarity_data <- train_data[, similarity_vars]
+
+# scale training data (IMPORTANT)
+scaled_train <- scale(similarity_data)
+
 # Train / Test Split
 set.seed(123)
 train_index <- sample(1:nrow(data), 0.7 * nrow(data))
@@ -65,40 +77,92 @@ age_to_num <- function(x) {
 # Inputs for rule-based
 ui <- fluidPage(
   
-  titlePanel("Cardiovascular Risk Profiling Dashboard"),
+  div(
+    style = "background-color:#d9f2ff; padding:15px; border-radius:8px; text-align:center;",
+    h2("Cardiovascular Risk Profiling Dashboard")
+  ),
   
-  sidebarLayout(
+  fluidRow(
     
-    sidebarPanel(
-      
-      selectInput("age", "Age:",
-                  c("Under 40", "40-50", "50-60", "60-70", "70+")),
-      
-      selectInput("gender", "Gender:", c("Female", "Male")),
-      
-      selectInput("smoking", "Smoking:", c("0","1")),
-      selectInput("obesity", "Obesity:", c("0","1")),
-      selectInput("diabetes", "Diabetes:", c("0","1")),
-      selectInput("family_history", "Family History:", c("0","1")),
-      
-      selectInput("cholesterol", "Cholesterol:", c("Low", "Med", "High")),
-      selectInput("heart_rate", "Heart Rate:", c("Low", "Med", "High")),
-      selectInput("bmi", "BMI:", c("Low", "Med", "High")),
-      selectInput("triglycerides", "Triglycerides:", c("Low", "Med", "High")),
-      selectInput("blood_sugar", "Blood Sugar:", c("Low", "Med", "High")),
-      
-      selectInput("ck_mb", "CK-MB:", c("Low", "Med", "High")),
-      selectInput("troponin", "Troponin:", c("Low", "Med", "High"))
-    ),
-    
-    mainPanel(
-      textOutput("rule_score"),
-      textOutput("log_pred"),
-      textOutput("rf_pred"),
-      verbatimTextOutput("comparison")
+    column(12,
+           
+           h4("Patient Inputs"),
+           
+           fluidRow(
+             
+             column(2,
+                    selectInput("age", "Age:",
+                                c("Under 40", "40-50", "50-60", "60-70", "70+"))),
+             
+             column(2,
+                    selectInput("gender", "Gender:", c("Female", "Male"))),
+             
+             column(2,
+                    selectInput("smoking", "Smoking:", c("0","1"))),
+             
+             column(2,
+                    selectInput("obesity", "Obesity:", c("0","1"))),
+             
+             column(2,
+                    selectInput("diabetes", "Diabetes:", c("0","1"))),
+             
+             column(2,
+                    selectInput("family_history", "Family History:", c("0","1")))
+           ),
+           
+           fluidRow(
+             column(2, selectInput("cholesterol", "Cholesterol:", c("Low", "Med", "High"))),
+             column(2, selectInput("heart_rate", "Heart Rate:", c("Low", "Med", "High"))),
+             column(2, selectInput("bmi", "BMI:", c("Low", "Med", "High"))),
+             column(2, selectInput("triglycerides", "Triglycerides:", c("Low", "Med", "High"))),
+             column(2, selectInput("blood_sugar", "Blood Sugar:", c("Low", "Med", "High"))),
+             column(2, selectInput("ck_mb", "CK-MB:", c("Low", "Med", "High")))
+           ),
+           
+           fluidRow(
+             column(2, selectInput("troponin", "Troponin:", c("Low", "Med", "High")))
+           )
     )
-  )
-)
+  ),
+  
+  hr(),
+  
+  # Results
+  
+  # Color Risk 
+  fluidRow(
+    column(12, align = "left",
+           uiOutput("risk_score"))
+  ),
+  
+  # Model Scores
+  fluidRow(
+    column(4, uiOutput("rule_score")),
+    column(4, uiOutput("log_pred")),
+    column(4, uiOutput("rf_pred"))
+  ),
+  
+  # 3. Comparison Box
+  fluidRow(
+    column(12,
+           div(style = "text-align:left; border:1px solid #ccc; padding:10px;",
+               verbatimTextOutput("comparison")
+           )
+    )
+  ),
+  
+  hr(),
+  
+  # 4. Similar Patient
+  fluidRow(
+    column(12,
+           div(style = "text-align:left;",
+               h4("Most Similar Patient"),
+               textOutput("similarity_score"),
+               tableOutput("closest_patient")
+           )
+    )
+  ))
 
 # Server - behind the scenes
 server <- function(input, output) {
@@ -122,6 +186,7 @@ server <- function(input, output) {
     score
   })
   
+  # new patient input
   new_patient <- reactive({
     
     data.frame(
@@ -145,17 +210,104 @@ server <- function(input, output) {
     )
   })
   
-  output$rule_score <- renderText({
-    paste("Rule-Based Score:", score_calc())
+  # Similarity Section
+  similarity_vars <- c(
+    "Age", "Cholesterol", "Heart.rate",
+    "BMI", "Triglycerides", "Blood.sugar",
+    "CK.MB", "Troponin"
+  )
+  
+  similarity_data <- train_data[, similarity_vars]
+  
+  scaled_train <- scale(similarity_data)
+  
+  scaled_new_patient <- reactive({
+    
+    new <- new_patient()[, similarity_vars]
+    
+    scaled <- scale(
+      new,
+      center = attr(scaled_train, "scaled:center"),
+      scale = attr(scaled_train, "scaled:scale")
+    )
+    
+    as.numeric(scaled)
   })
   
-  # apply log
+  distances <- reactive({
+    
+    apply(scaled_train, 1, function(row) {
+      sqrt(sum((row - scaled_new_patient())^2))
+    })
+  })
+  
+  closest_index <- reactive({
+    which.min(distances())
+  })
+  
+  closest_patient_match <- reactive({
+    train_data[closest_index(), ]
+  })
+  
+  # Outputs
+  output$similarity_score <- renderText({
+    paste(
+      "Similarity distance:",
+      round(distances()[closest_index()], 3),
+      "(lower = more similar)"
+    )
+  })
+  
+  output$closest_patient <- renderTable({
+    
+    cp <- closest_patient_match()
+    
+    data.frame(
+      Variable = names(cp),
+      Value = as.character(cp),
+      row.names = NULL
+    )
+  })
+  
+  output$risk_score <- renderUI({
+    
+    score <- score_calc()
+    index <- score / 9
+    
+    color <- if (index < 0.33) {
+      "green"
+    } else if (index < 0.66) {
+      "orange"
+    } else {
+      "red"
+    }
+    
+    label <- if (index < 0.33) {
+      "Low Risk"
+    } else if (index < 0.66) {
+      "Moderate Risk"
+    } else {
+      "High Risk"
+    }
+    
+    HTML(paste0(
+      "<h3 style='color:", color, "'>",
+      label, " (", round(index, 3), ")</h3>"
+    ))
+  })
+  
+  output$rule_score <- renderText({
+    
+    score <- score_calc()
+    
+    paste("Rule-Based Score:", score)
+  })
+  
   output$log_pred <- renderText({
     prob <- predict(log_model, new_patient(), type = "response")
     paste("Logistic Regression Risk:", round(prob * 100, 1), "%")
   })
   
-  # apply random forest
   output$rf_pred <- renderText({
     prob <- predict(rf_model, new_patient(), type = "prob")[,2]
     paste("Random Forest Risk:", round(prob * 100, 1), "%")
@@ -169,7 +321,7 @@ server <- function(input, output) {
     paste0(
       "MODEL COMPARISON\n",
       "----------------------\n",
-      "Rule Score: ", score_calc(), "\n",
+      "Rule Score Normalized: ", round(score_calc() /9, 3), "\n",
       "Logistic: ", round(log_prob, 3), "\n",
       "Random Forest: ", round(rf_prob, 3)
     )
