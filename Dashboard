@@ -1,17 +1,12 @@
 library(shiny)
 library(randomForest)
 
-# =========================
-# LOAD DATA
-# =========================
+# Load Data
 data <- read.csv("C:/Users/schlu/OneDrive/Desktop/heart_attack.csv")
 data <- na.omit(data)
 
-# =========================
-# FIX TYPES (CRITICAL FIX)
-# =========================
 
-# Convert YES/NO style columns consistently to FACTORS
+# Convert YES/NO style columns consistently to Factors
 data$Diabetes <- factor(data$Diabetes, levels = c(0,1))
 data$Smoking <- factor(data$Smoking, levels = c(0,1))
 data$Obesity <- factor(data$Obesity, levels = c(0,1))
@@ -23,9 +18,7 @@ data$Gender <- factor(data$Gender)
 # Target
 data$Heart.Attack.Risk..Binary. <- as.factor(data$Heart.Attack.Risk..Binary.)
 
-# =========================
-# TRAIN / TEST SPLIT
-# =========================
+# Train / Test Split
 set.seed(123)
 train_index <- sample(1:nrow(data), 0.7 * nrow(data))
 
@@ -34,16 +27,12 @@ test_data <- data[-train_index, ]
 
 test_data$Gender <- factor(test_data$Gender, levels = levels(train_data$Gender))
 
-# =========================
-# MODELS
-# =========================
+# Models
 
+# need to replace with new logistic model
 log_model <- glm(
-  Heart.Attack.Risk..Binary. ~ Age + Cholesterol + Heart.rate +
-    Diabetes + Family.History + Smoking + Obesity +
-    BMI + Triglycerides + Blood.sugar +
-    CK.MB + Troponin + Gender,
-  data = train_data,
+  Heart.Attack.Risk..Binary. ~ Cholesterol,
+  data = data,
   family = binomial
 )
 
@@ -57,10 +46,7 @@ rf_model <- randomForest(
   importance = TRUE
 )
 
-# =========================
-# HELPERS
-# =========================
-
+#Convert inputs to numbers 
 to_numeric <- function(x) {
   if (x == "Low") return(0.2)
   if (x == "Med") return(0.5)
@@ -76,10 +62,8 @@ age_to_num <- function(x) {
   return(50)
 }
 
-# =========================
-# UI
-# =========================
-
+# ui - what the user sees 
+# Inputs for rule-based
 ui <- fluidPage(
   
   titlePanel("Cardiovascular Risk Profiling Dashboard"),
@@ -112,17 +96,15 @@ ui <- fluidPage(
       textOutput("rule_score"),
       textOutput("log_pred"),
       textOutput("rf_pred"),
-      textOutput("comparison")
+      verbatimTextOutput("comparison")
     )
   )
 )
 
-# =========================
-# SERVER
-# =========================
-
+# Server - behind the scenes
 server <- function(input, output) {
   
+  # calculate rule-score
   score_calc <- reactive({
     
     score <- 0
@@ -148,7 +130,6 @@ server <- function(input, output) {
       
       Gender = factor(input$gender, levels = levels(train_data$Gender)),
       
-      # 🔥 FIX: MATCH TRAINING (FACTORS, NOT NUMERIC)
       Diabetes = factor(input$diabetes, levels = c("0","1")),
       Smoking = factor(input$smoking, levels = c("0","1")),
       Obesity = factor(input$obesity, levels = c("0","1")),
@@ -169,11 +150,13 @@ server <- function(input, output) {
     paste("Rule-Based Score:", score_calc())
   })
   
+  # apply log
   output$log_pred <- renderText({
     prob <- predict(log_model, new_patient(), type = "response")
     paste("Logistic Regression Risk:", round(prob * 100, 1), "%")
   })
   
+  # apply random forest
   output$rf_pred <- renderText({
     prob <- predict(rf_model, new_patient(), type = "prob")[,2]
     paste("Random Forest Risk:", round(prob * 100, 1), "%")
