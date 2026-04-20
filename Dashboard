@@ -1,37 +1,197 @@
 library(shiny)
+library(randomForest)
+
+# =========================
+# LOAD DATA
+# =========================
+data <- read.csv("C:/Users/schlu/OneDrive/Desktop/heart_attack.csv")
+data <- na.omit(data)
+
+# =========================
+# FIX TYPES (CRITICAL FIX)
+# =========================
+
+# Convert YES/NO style columns consistently to FACTORS
+data$Diabetes <- factor(data$Diabetes, levels = c(0,1))
+data$Smoking <- factor(data$Smoking, levels = c(0,1))
+data$Obesity <- factor(data$Obesity, levels = c(0,1))
+data$Family.History <- factor(data$Family.History, levels = c(0,1))
+
+# Gender
+data$Gender <- factor(data$Gender)
+
+# Target
+data$Heart.Attack.Risk..Binary. <- as.factor(data$Heart.Attack.Risk..Binary.)
+
+# =========================
+# TRAIN / TEST SPLIT
+# =========================
+set.seed(123)
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+
+train_data <- data[train_index, ]
+test_data <- data[-train_index, ]
+
+test_data$Gender <- factor(test_data$Gender, levels = levels(train_data$Gender))
+
+# =========================
+# MODELS
+# =========================
+
+log_model <- glm(
+  Heart.Attack.Risk..Binary. ~ Age + Cholesterol + Heart.rate +
+    Diabetes + Family.History + Smoking + Obesity +
+    BMI + Triglycerides + Blood.sugar +
+    CK.MB + Troponin + Gender,
+  data = train_data,
+  family = binomial
+)
+
+rf_model <- randomForest(
+  Heart.Attack.Risk..Binary. ~ Age + Cholesterol + Heart.rate +
+    Diabetes + Family.History + Smoking + Obesity +
+    BMI + Triglycerides + Blood.sugar +
+    CK.MB + Troponin + Gender,
+  data = train_data,
+  ntree = 500,
+  importance = TRUE
+)
+
+# =========================
+# HELPERS
+# =========================
+
+to_numeric <- function(x) {
+  if (x == "Low") return(0.2)
+  if (x == "Med") return(0.5)
+  if (x == "High") return(0.8)
+}
+
+age_to_num <- function(x) {
+  if (x == "Under 40") return(35)
+  if (x == "40-50") return(45)
+  if (x == "50-60") return(55)
+  if (x == "60-70") return(65)
+  if (x == "70+") return(75)
+  return(50)
+}
+
+# =========================
+# UI
+# =========================
 
 ui <- fluidPage(
   
-  titlePanel("Heart Attack Risk"),
+  titlePanel("Cardiovascular Risk Profiling Dashboard"),
   
   sidebarLayout(
+    
     sidebarPanel(
-      sliderInput("bins",
-                  "Number of bins:",
-                  min = 1,
-                  max = 50,
-                  value = 30),
       
-      selectInput("dropdown", "Choose one:",
-                  choices = c("Diabetes", "Smoking", "Obesity"))
+      selectInput("age", "Age:",
+                  c("Under 40", "40-50", "50-60", "60-70", "70+")),
+      
+      selectInput("gender", "Gender:", c("Female", "Male")),
+      
+      selectInput("smoking", "Smoking:", c("0","1")),
+      selectInput("obesity", "Obesity:", c("0","1")),
+      selectInput("diabetes", "Diabetes:", c("0","1")),
+      selectInput("family_history", "Family History:", c("0","1")),
+      
+      selectInput("cholesterol", "Cholesterol:", c("Low", "Med", "High")),
+      selectInput("heart_rate", "Heart Rate:", c("Low", "Med", "High")),
+      selectInput("bmi", "BMI:", c("Low", "Med", "High")),
+      selectInput("triglycerides", "Triglycerides:", c("Low", "Med", "High")),
+      selectInput("blood_sugar", "Blood Sugar:", c("Low", "Med", "High")),
+      
+      selectInput("ck_mb", "CK-MB:", c("Low", "Med", "High")),
+      selectInput("troponin", "Troponin:", c("Low", "Med", "High"))
     ),
     
     mainPanel(
-      plotOutput("distPlot")
+      textOutput("rule_score"),
+      textOutput("log_pred"),
+      textOutput("rf_pred"),
+      textOutput("comparison")
     )
   )
 )
 
+# =========================
+# SERVER
+# =========================
+
 server <- function(input, output) {
   
-  output$distPlot <- renderPlot({
-    x    <- faithful[, 2]
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
+  score_calc <- reactive({
     
-    hist(x, breaks = bins, col = 'darkgray', border = 'white',
-         xlab = 'Waiting time to next eruption (in mins)',
-         main = paste("Histogram of", input$dropdown))
+    score <- 0
+    
+    if (input$age %in% c("60-70","70+")) score <- score + 1
+    
+    score <- score + to_numeric(input$cholesterol)
+    score <- score + to_numeric(input$heart_rate)
+    score <- score + to_numeric(input$bmi)
+    score <- score + to_numeric(input$triglycerides)
+    score <- score + to_numeric(input$blood_sugar)
+    
+    score <- score + 2 * to_numeric(input$ck_mb)
+    score <- score + 3 * to_numeric(input$troponin)
+    
+    score
+  })
+  
+  new_patient <- reactive({
+    
+    data.frame(
+      Age = age_to_num(input$age),
+      
+      Gender = factor(input$gender, levels = levels(train_data$Gender)),
+      
+      # 🔥 FIX: MATCH TRAINING (FACTORS, NOT NUMERIC)
+      Diabetes = factor(input$diabetes, levels = c("0","1")),
+      Smoking = factor(input$smoking, levels = c("0","1")),
+      Obesity = factor(input$obesity, levels = c("0","1")),
+      Family.History = factor(input$family_history, levels = c("0","1")),
+      
+      Cholesterol = to_numeric(input$cholesterol),
+      Heart.rate = to_numeric(input$heart_rate),
+      BMI = to_numeric(input$bmi),
+      Triglycerides = to_numeric(input$triglycerides),
+      Blood.sugar = to_numeric(input$blood_sugar),
+      
+      CK.MB = to_numeric(input$ck_mb),
+      Troponin = to_numeric(input$troponin)
+    )
+  })
+  
+  output$rule_score <- renderText({
+    paste("Rule-Based Score:", score_calc())
+  })
+  
+  output$log_pred <- renderText({
+    prob <- predict(log_model, new_patient(), type = "response")
+    paste("Logistic Regression Risk:", round(prob * 100, 1), "%")
+  })
+  
+  output$rf_pred <- renderText({
+    prob <- predict(rf_model, new_patient(), type = "prob")[,2]
+    paste("Random Forest Risk:", round(prob * 100, 1), "%")
+  })
+  
+  output$comparison <- renderText({
+    
+    log_prob <- predict(log_model, new_patient(), type = "response")
+    rf_prob <- predict(rf_model, new_patient(), type = "prob")[,2]
+    
+    paste0(
+      "MODEL COMPARISON\n",
+      "----------------------\n",
+      "Rule Score: ", score_calc(), "\n",
+      "Logistic: ", round(log_prob, 3), "\n",
+      "Random Forest: ", round(rf_prob, 3)
+    )
   })
 }
 
-shinyApp(ui = ui, server = server)
+shinyApp(ui, server)
