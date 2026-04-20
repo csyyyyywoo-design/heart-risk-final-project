@@ -29,9 +29,8 @@ test_data$Gender <- factor(test_data$Gender, levels = levels(train_data$Gender))
 
 # Models
 
-# need to replace with new logistic model
 log_model <- glm(
-  Heart.Attack.Risk..Binary. ~ Cholesterol,
+  Heart.Attack.Risk..Binary. ~ Cholesterol + Diabetes + Obesity,
   data = data,
   family = binomial
 )
