@@ -1,7 +1,6 @@
 # ============================================================
 # Heart Attack Risk Dashboard
 # Hannah Chen — Final Project
-# Faster Final Version
 # ============================================================
 
 library(shiny)
