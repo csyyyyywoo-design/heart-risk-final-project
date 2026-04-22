@@ -24,3 +24,9 @@ heart$Heart.Attack.Risk..Binary. <- factor(
 n_total <- nrow(heart)
 pct_high <- round(mean(heart$Heart.Attack.Risk..Binary. == "High Risk") * 100, 1)
 ```
+```{r}
+ggplot(heart, aes(x = Heart.Attack.Risk..Binary., fill = Heart.Attack.Risk..Binary.)) +
+  geom_bar() +
+  labs(x = "Risk Group", y = "Count") +
+  theme_minimal()
+```
