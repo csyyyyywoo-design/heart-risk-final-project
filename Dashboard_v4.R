@@ -25,6 +25,10 @@ factor_vars <- c(
   "Heart.Attack.Risk..Binary.",
   "Gender"
 )
+heart_nomis$Alcohol.Consumption <- factor(heart_nomis$Alcohol.Consumption, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Diet <- as.factor(heart_nomis$Diet)
+heart_nomis$Previous.Heart.Problems <- factor(heart_nomis$Previous.Heart.Problems, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Medication.Use <- factor(heart_nomis$Medication.Use, levels = c(0, 1), labels = c("0", "1"))
 heart_nomis$Diabetes <- factor(heart_nomis$Diabetes, levels = c(0, 1), labels = c("0", "1"))
 heart_nomis$Family.History <- factor(heart_nomis$Family.History, levels = c(0, 1), labels = c("0", "1"))
 heart_nomis$Smoking <- factor(heart_nomis$Smoking, levels = c(0, 1), labels = c("0", "1"))
@@ -52,6 +56,17 @@ test_data <- heart_nomis[-train_index, ]
 # ----------------------------
 # 3. Model formula
 # ----------------------------
+
+full_formula <- Heart.Attack.Risk..Binary. ~
+  Age + Cholesterol + Heart.rate +
+  Diabetes + Family.History + Smoking + Obesity +
+  Alcohol.Consumption + Exercise.Hours.Per.Week + Diet +
+  Previous.Heart.Problems + Medication.Use + Stress.Level +
+  Sedentary.Hours.Per.Day + Income + BMI + Triglycerides +
+  Physical.Activity.Days.Per.Week + Sleep.Hours.Per.Day +
+  Blood.sugar + CK.MB + Troponin + Gender +
+  Systolic.blood.pressure + Diastolic.blood.pressure
+
 model_formula <- Heart.Attack.Risk..Binary. ~
   Age +
   Gender +
@@ -66,24 +81,34 @@ model_formula <- Heart.Attack.Risk..Binary. ~
   Blood.sugar +
   CK.MB +
   Troponin
-
 # ----------------------------
 # 4. Fit models
 # ----------------------------
+full_log_model <- glm(full_formula, data = train_data, family = binomial)
+log_model_full <- stepAIC(full_log_model, direction = "both", trace = FALSE)
+
+set.seed(123)
+rf_model_full <- randomForest(
+  full_formula,
+  data = train_data,
+  ntree = 500,
+  importance = TRUE
+)
+
 log_model <- glm(model_formula, data = train_data, family = binomial)
 
 set.seed(123)
 rf_model <- randomForest(
   model_formula,
   data = train_data,
-  ntree = 200,
+  ntree = 500,
   importance = TRUE
 )
 
 # ----------------------------
 # 5. Evaluate models
 # ----------------------------
-test_data$log_prob <- predict(log_model, newdata = test_data, type = "response")
+test_data$log_prob <- predict(log_model_full, newdata = test_data, type = "response")
 test_data$log_class <- factor(
   ifelse(test_data$log_prob > 0.5, "1", "0"),
   levels = c("0", "1")
@@ -101,8 +126,8 @@ roc_log <- roc(
   levels = c("0", "1")
 )
 
-rf_pred <- predict(rf_model, newdata = test_data)
-rf_prob <- predict(rf_model, newdata = test_data, type = "prob")[, "1"]
+rf_pred <- predict(rf_model_full, newdata = test_data)
+rf_prob <- predict(rf_model_full, newdata = test_data, type = "prob")[, "1"]
 
 cm_rf <- confusionMatrix(
   rf_pred,
@@ -172,7 +197,7 @@ summary_stats <- function(data, var) {
         "High Risk"
       )
     ) %>%
-    select(RiskGroup, Mean, Median, SD, Min, Max)
+    dplyr::select(RiskGroup, Mean, Median, SD, Min, Max)
 }
 
 metric_df <- data.frame(
@@ -202,7 +227,7 @@ outcome_summary_df <- data.frame(
   Proportion = round(as.numeric(prop) * 100, 1)
 )
 
-rf_imp <- as.data.frame(importance(rf_model))
+rf_imp <- as.data.frame(importance(rf_model_full))
 rf_imp$Feature <- rownames(rf_imp)
 rf_imp <- rf_imp %>%
   arrange(desc(MeanDecreaseGini)) %>%
