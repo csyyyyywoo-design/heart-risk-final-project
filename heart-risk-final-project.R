@@ -191,6 +191,13 @@ confusionMatrix(test_data$pred_class, test_data$Heart.Attack.Risk..Binary.)
 logit_roc <- roc(test_data$Heart.Attack.Risk..Binary., test_data$pred_prob)
 auc(logit_roc)
 
+log1 <- glm(
+  Heart.Attack.Risk..Binary. ~ Obesity + Cholesterol + Diabetes,
+  data = train_data,
+  family = binomial
+)
+auc(roc(test_data$Heart.Attack.Risk..Binary., predict(log1, newdata = test_data, type = "response")))
+
 plot(logit_roc, main = "ROC Curve for Step Logistic Regression Model")
 abline(a = 0, b = 1, lty = 2)
 
@@ -281,3 +288,52 @@ legend("bottomright",
        ),
        col = c("red", "blue"),
        lwd = 2)
+
+
+# XG Boost model
+library(xgboost)
+library(caret)
+library(pROC)
+
+# outcome as numeric 0/1
+train_label <- as.numeric(as.character(train_data$Heart.Attack.Risk..Binary.))
+test_label  <- as.numeric(as.character(test_data$Heart.Attack.Risk..Binary.))
+
+# predictor matrices
+x_train <- model.matrix(Heart.Attack.Risk..Binary. ~ ., data = train_data)[, -1]
+x_test  <- model.matrix(Heart.Attack.Risk..Binary. ~ ., data = test_data)[, -1]
+
+# convert to DMatrix
+dtrain <- xgb.DMatrix(data = x_train, label = train_label)
+dtest  <- xgb.DMatrix(data = x_test, label = test_label)
+
+# fit model
+set.seed(123)
+
+xgb_model <- xgb.train(
+  params = list(
+    objective = "binary:logistic",
+    eval_metric = "auc",
+    max_depth = 3,
+    eta = 0.1
+  ),
+  data = dtrain,
+  nrounds = 100,
+  verbose = 0
+)
+
+# predicted probabilities
+xgb_prob <- predict(xgb_model, newdata = dtest)
+
+# predicted classes
+xgb_pred <- factor(
+  ifelse(xgb_prob > 0.5, "1", "0"),
+  levels = c("0", "1")
+)
+
+# confusion matrix
+confusionMatrix(xgb_pred, test_data$Heart.Attack.Risk..Binary.)
+
+# ROC and AUC
+xgb_roc <- roc(test_data$Heart.Attack.Risk..Binary., xgb_prob)
+auc(xgb_roc)
