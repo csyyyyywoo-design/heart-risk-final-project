@@ -9,8 +9,8 @@ library(pROC)
 library(randomForest)
 
 # Load and clean data
-data <- read.csv("C:/Users/schlu/OneDrive/Desktop/heart_attack.csv")
-heart_nomis <- na.omit(data)
+heart <- read.csv("heart-attack-risk-prediction-dataset.csv")
+heart_nomis <- na.omit(heart)
 
 factor_vars <- c(
   "Diabetes",
