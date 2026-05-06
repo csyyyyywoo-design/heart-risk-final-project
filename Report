@@ -1,0 +1,280 @@
+---
+output: 
+  pdf_document
+header-includes:
+  - \usepackage{hyperref}
+  - \usepackage{tikz}
+  - \usepackage{venndiagram}
+  - \usepackage{array}   
+  - \usepackage{caption}
+  - \usepackage{graphicx} 
+  - \graphicspath{ {./Images/}} 
+  - \usepackage{amssymb,amsmath,amsthm} 
+  - \usepackage{bm} 
+  - \newcommand{\vect}[1]{\boldsymbol{\mathbf{#1}}}
+  - \usepackage{multirow}
+  - \usepackage{booktabs}
+  - \usepackage{lmodern}
+  - \usepackage{algorithm}
+  - \usepackage{algpseudocode}
+  - \usepackage{cancel}
+  - \usepackage{siunitx}
+  - \usepackage[table]{xcolor}
+  - \usepackage{hhline}
+  - \usepackage{calc}
+  - \usepackage{tabularx}
+  - \usepackage{fontawesome}
+  - \usepackage{enumitem}
+  - \usepackage[para,online,flushleft]{threeparttable}
+  - \usepackage{arydshln}
+title: "Final Project Report"
+author: Hannah Chen and Kyndal Schlup
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+geometry: margin=1in
+mainfont: Times New Roman
+fontsize: 12pt
+# spacing: double
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, 
+  message = FALSE,
+  echo = TRUE,
+  fig.width = 5, 
+  fig.height = 3, 
+  fig.align = 'center',
+  dpi = 300
+)
+
+library(tidyverse); library(patchwork); library(MASS)
+theme_set(theme_minimal()); theme_update(panel.grid.minor = element_blank())
+```
+
+```{r, echo=FALSE}
+library(caret)
+data <- read.csv("C:/Users/schlu/OneDrive/Desktop/heart_attack.csv")
+heart_nomis <- na.omit(data) # Removes every row that has at least one missing value
+
+factor_vars <- c(
+  "Diabetes",
+  "Family.History",
+  "Smoking",
+  "Obesity",
+  "Heart.Attack.Risk..Binary.",
+  "Gender"
+)
+heart_nomis$Alcohol.Consumption <- factor(heart_nomis$Alcohol.Consumption, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Diet <- as.factor(heart_nomis$Diet)
+heart_nomis$Previous.Heart.Problems <- factor(heart_nomis$Previous.Heart.Problems, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Medication.Use <- factor(heart_nomis$Medication.Use, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Diabetes <- factor(heart_nomis$Diabetes, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Family.History <- factor(heart_nomis$Family.History, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Smoking <- factor(heart_nomis$Smoking, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Obesity <- factor(heart_nomis$Obesity, levels = c(0, 1), labels = c("0", "1"))
+heart_nomis$Heart.Attack.Risk..Binary. <- factor(
+  heart_nomis$Heart.Attack.Risk..Binary.,
+  levels = c(0, 1),
+  labels = c("0", "1")
+)
+heart_nomis$Gender <- factor(heart_nomis$Gender)
+
+# Train / test split
+set.seed(123)
+train_index <- createDataPartition(
+  heart_nomis$Heart.Attack.Risk..Binary.,
+  p = 0.8, #80/20 training
+  list = FALSE
+)
+
+train_data <- heart_nomis[train_index, ]
+test_data <- heart_nomis[-train_index, ]
+```
+
+## Overview 
+
+We completed a heart attack risk statistical analysis. Our objective was to help doctors better understand a patient’s heart attack risk. We wanted to build models to help predict risk and create a dashboard to visualize these predictions. This would allow a medical professional to be able to better understand the heart attack risk of a new patient based on their attributes.
+
+## Data 
+
+We used the "Heart Attack Risk Prediction Cleaned Dataset" from Kaggle. This dataset is designed for predicting heart attack risk. All numerical values were already normalized. There were 9,651 rows and 27 total columns. The dataset was already been cleaned with all data being in the same format, but we removed all rows with N/A. This reduced the data to 9,377 rows. We also made sure all binary variables were in the form of 0 or 1. The response variable we chose was "Heart Attack Risk (Binary)." The response variable is imbalanced with 64% being 0 and 36% being 1. As we began looking at correlations between potential predictors and the response variable, we quickly saw that our predictors were all very weak. For example here is the data for patients with previous heart problems and their risk. 
+
+```{r, echo=FALSE}
+previous_prop <- table(heart_nomis$Previous.Heart.Problems, heart_nomis$Heart.Attack.Risk..Binary)
+
+dimnames(previous_prop) <- list(
+  Previous = c("Yes (1)", "No (2)"),
+  Risk = c("No Risk (0)", "Risk (1)")
+)
+
+previous_prop
+```
+
+This shows that there is little to no differentiation between patients with previous heart problems and those without.
+
+## Statistical Process 
+
+We decided to build a logistic regression model, random forest model, and XGBoost model. All of these models were very weak, so we looked at other options. We trained our data 80-20. It improved all models marginally compared to the 70-30 split. Our strongest model was the Random Forest Model with an AUC of 0.5893. We also created rule-based scoring to add to our dashboard. This allowed us to create a visual that can predict risk based on known causing factors, but it also allowed us to see how weak our models were. 
+
+## Logistic Regression Model 
+
+We ran all possible predictors in StepAIC. It gave the following model.  
+\begin{align}
+\log\left(\frac{p}{1 - p}\right) &= \beta_0 \\
+&+ \beta_1 \cdot \text{Cholesterol} \\
+&+ \beta_2 \cdot \text{Sleep Hours Per Day} \\
+&+ \beta_3 \cdot \text{Heart Attack Risk (Text)} \\
+&+ \beta_4 \cdot \text{Systolic Blood Pressure}
+\end{align}
+The Heart Attack Risk was counter intuitive as a predictor since it is giving the same information as our response variable. We decided to remove it. As we worked with the dashboard, we chose to look at the most logical model options. We decided to have three predictors out of the predictors being used in the dashboard. We put them all in StepAIC and got the following model. 
+$$\log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 \cdot \text{Cholesterol} + \beta_2 \cdot \text{Diabetes} + \beta_3 \cdot \text{Obesity}$$
+This model has an AUC of 0.521. 
+
+```{r, echo=FALSE}
+library(pROC)
+
+final_logistic <- glm(Heart.Attack.Risk..Binary. ~ Cholesterol + Diabetes + Obesity, data = heart_nomis, family = binomial)
+
+pred_probs_final <- predict(final_logistic, type = "response")
+
+roc_obj <- roc(heart_nomis$Heart.Attack.Risk..Binary, pred_probs_final)
+
+plot(roc_obj, col = "blue", main = "ROC Curve for Final Logistic Model")
+```
+
+We analyzed the model with a K- fold cross - validation and got a kappa value of 0 indicating that the results are no better than random chance. Our accuracy is 0.6447691. We tried several different feature engineering versions. None of them improved the accuracy or kappa. The following are a few additional models we tried that did not improve. 
+
+$$\log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 \cdot \text{Cholesterol} + \beta_2 \cdot \text{Sleep.Hours.Per.Day} + \beta_3 \cdot \text{Stress.Level} + \beta_4 \cdot \text{Systolic.blood.pressure}$$
+These are four of the most commonly cited continuous cardiovascular risk factors.
+
+ $$\log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 \cdot \text{Cholesterol} + \beta_2 \cdot \text{Gender}$$
+This tests whether the well-known difference in heart attack risk between males and females adds predictive value when combined with the strongest single continuous predictor.
+ 
+$$\log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 \cdot \text{Troponin} + \beta_2 \cdot \text{CK.MB}$$
+This model is made up of the top two known heart attack predictors. 
+
+$$\log\left(\frac{p}{1 - p}\right) = \beta_0 + \beta_1 \cdot \text{Obesity} * \beta_2 \cdot \text{Cholesterol} * \beta_3 \cdot \text{Diabetes}$$
+We also tested a model with Obesity, Cholesterol, and Diabetes as interaction terms rather than additive predictors.
+
+Across all versions, the kappa remained at 0 indicating that the majority is being chosen every time. This shows that both engineering and predictor changes do not improve the predictability of the model.
+
+## Random Forest Model 
+
+We created a random forest model. We used all predictors. Our first model used 200 trees. When we increased to 500 trees the AUC increased by 0.05. This model turned out to be slightly stronger than our logistic regression. With an AUC of 0.5893, this is still a weak model. We ran a confusion matrix and got an accuracy of 0.6677 and kappa value of 0.0872. The top features include BMI, income, sedentary hours per day, exercise hours per week, and triglycerides.
+
+```{r, echo=FALSE}
+library(randomForest)
+library(pROC)
+
+full_formula <- Heart.Attack.Risk..Binary. ~
+  Age + Cholesterol + Heart.rate +
+  Diabetes + Family.History + Smoking + Obesity +
+  Alcohol.Consumption + Exercise.Hours.Per.Week + Diet +
+  Previous.Heart.Problems + Medication.Use + Stress.Level +
+  Sedentary.Hours.Per.Day + Income + BMI + Triglycerides +
+  Physical.Activity.Days.Per.Week + Sleep.Hours.Per.Day +
+  Blood.sugar + CK.MB + Troponin + Gender +
+  Systolic.blood.pressure + Diastolic.blood.pressure
+
+set.seed(123)
+rf_model <- randomForest(
+  full_formula,
+  data = train_data,
+  ntree = 500,
+  importance = TRUE
+)
+
+# Random forest 
+# extract just the column with high risk
+rf_pred <- predict(rf_model, newdata = test_data)
+rf_prob <- predict(rf_model, newdata = test_data, type = "prob")[, "1"]
+
+# Random forest roc curve
+roc_rf <- roc(
+  response = test_data$Heart.Attack.Risk..Binary.,
+  predictor = rf_prob,
+  levels = c("0", "1")
+)
+
+plot(roc_rf, col = "darkgreen", main = "ROC Curve for Random Forest Model")
+```
+
+## XGBoost
+
+We created a XGBoost model. We used 100 rounds. The AUC was 0.508. We re-did the model using only the focus predictors and raised the AUC to 0.5384. We ran a confusion matrix and got an accuracy of 0.6421 and kappa value of -0.0018. 
+
+```{r, echo=FALSE}
+library(xgboost)
+library(pROC)
+library(caret)
+
+# Prepare data for XGBoost (requires numeric matrix)
+train_label <- as.numeric(as.character(train_data$Heart.Attack.Risk..Binary.))
+test_label  <- as.numeric(as.character(test_data$Heart.Attack.Risk..Binary.))
+
+small_formula <- Heart.Attack.Risk..Binary. ~
+  Age + Gender + Diabetes + Smoking + Obesity + Family.History +
+  Cholesterol + Heart.rate + BMI + Triglycerides +
+  Blood.sugar + CK.MB + Troponin
+
+x_train <- model.matrix(small_formula, data = train_data)[, -1]
+x_test  <- model.matrix(small_formula, data = test_data)[, -1]
+
+dtrain <- xgb.DMatrix(data = x_train, label = train_label)
+dtest  <- xgb.DMatrix(data = x_test,  label = test_label)
+
+# Fit XGBoost model
+set.seed(123)
+xgb_model <- xgb.train(
+  params = list(
+    objective  = "binary:logistic",
+    eval_metric = "auc",
+    max_depth  = 3,
+    eta        = 0.1
+  ),
+  data    = dtrain,
+  nrounds = 100,
+  verbose = 0
+)
+
+# Predictions and evaluation
+xgb_prob <- predict(xgb_model, newdata = dtest)
+xgb_pred <- factor(ifelse(xgb_prob > 0.5, "1", "0"), levels = c("0", "1"))
+
+xgb_cm <- confusionMatrix(
+  xgb_pred,
+  test_data$Heart.Attack.Risk..Binary.,
+  positive = "1"
+)
+
+# ROC curve and AUC
+xgb_roc <- roc(
+  response  = test_data$Heart.Attack.Risk..Binary.,
+  predictor = xgb_prob,
+  levels    = c("0", "1")
+)
+
+plot(xgb_roc, main = "ROC Curve for XGBoost Model", col = "purple", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+```
+
+## Dashboard 
+
+We created a dashboard to visualize the results of our models and create a tool for assessing new patients. We displayed a summary of our data and models.
+
+Our dashboard gives a summary of the data and full exploratory data analysis. All models are explained and compared. Additionally, there are graphs where users can visualize the correlation of predictors with risk showing the lack of predictability of the data. This allows the medical professionals to gain a better understanding of the weakness of the data and why it can't be used for future predictions.   
+
+We created a tool that lets doctors enter patient demographics and health information to predict their heart attack risk. The model gives a probability, which we group into three categories. Anything below 0.33 is low risk, between 0.33 and 0.66 is medium risk, and anything 0.66 or higher is high risk. We split the probability space into equal thirds for these classifications. 
+
+Since our models were relatively weak, we added a rule based scoring system to make the results more useful and easier to interpret. In this system, each risk factor adds points based on how important it is. Age between 60 and 70 and age above 70 each add 1 point since older age is a well-established cardiac risk factor. Smoking, diabetes, family history, and obesity are yes or no variables, and each adds 0.8 points if the answer is yes. 0.8 is intentionally high but still below 1 to prevent binary dominance.
+
+For continuous variables like cholesterol, heart rate, BMI, triglycerides, and blood sugar, we break them into low, medium, and high categories. These contribute 0.2, 0.5, and 0.8 points respectively. CK MB is weighted more heavily and contributes double those values, while troponin is weighted the most and contributes triple the values since it has the strongest connection to cardiac risk.
+
+We only used our main predictors in both the models and the scoring system so everything stays consistent with what the doctor actually enters into the tool. This makes it more practical and easier to use in a real setting.
+
+We added a feature where it pulls up the most similar patient from the original data. This feature further demonstrates the discrepancies in the data. Many times a patient was low-risk based on our rule-based formula, but the similar patient was marked as high risk in the data. This additionally allows the doctor to immediately be able to compare their current patient to previous data. 
+
+## Conclusion 
+
+The poor performance across multiple models show that the predictors do not capture the factors leading to heart attack risk. Our rule-based scoring system was the most practical way to help a doctor analyze a patient's risk. Overall, this project is an example of having to work with bad data while still being able to provide analysis and an application tool. This statistical analysis can be used to work with future data that may have better predictability. 
