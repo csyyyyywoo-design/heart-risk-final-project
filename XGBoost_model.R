@@ -99,7 +99,7 @@ train_data <- heart_nomis[train_index, ]
 test_data  <- heart_nomis[-train_index, ]
 
 # -----------------------------
-# Full formula
+# model formula
 # -----------------------------
 full_formula <- Heart.Attack.Risk..Binary. ~
   Age + Cholesterol + Heart.rate +
@@ -111,6 +111,10 @@ full_formula <- Heart.Attack.Risk..Binary. ~
   Blood.sugar + CK.MB + Troponin + Gender +
   Systolic.blood.pressure + Diastolic.blood.pressure
 
+small_formula <- Heart.Attack.Risk..Binary. ~
+  Age + Gender + Diabetes + Smoking + Obesity + Family.History +
+  Cholesterol + Heart.rate + BMI + Triglycerides +
+  Blood.sugar + CK.MB + Troponin
 
 # -----------------------------
 # 6. Prepare data for XGBoost
@@ -121,8 +125,8 @@ train_label <- as.numeric(as.character(train_data$Heart.Attack.Risk..Binary.))
 test_label  <- as.numeric(as.character(test_data$Heart.Attack.Risk..Binary.))
 
 # Convert predictors into numeric matrix
-x_train <- model.matrix(full_formula, data = train_data)[, -1]
-x_test  <- model.matrix(full_formula, data = test_data)[, -1]
+x_train <- model.matrix(small_formula, data = train_data)[, -1]
+x_test  <- model.matrix(small_formula, data = test_data)[, -1]
 
 # Convert to XGBoost DMatrix format
 dtrain <- xgb.DMatrix(data = x_train, label = train_label)
@@ -189,19 +193,3 @@ plot(
 )
 
 abline(a = 0, b = 1, lty = 2, col = "gray")
-
-# -----------------------------
-# 11. Feature importance
-# -----------------------------
-xgb_importance <- xgb.importance(
-  feature_names = colnames(x_train),
-  model = xgb_model
-)
-
-print(xgb_importance)
-
-xgb.plot.importance(
-  xgb_importance,
-  top_n = 10,
-  main = "Top 10 XGBoost Feature Importance"
-)
