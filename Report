@@ -53,7 +53,7 @@ theme_set(theme_minimal()); theme_update(panel.grid.minor = element_blank())
 
 ```{r, echo=FALSE}
 library(caret)
-dheart <- read.csv("heart-attack-risk-prediction-dataset.csv")
+heart <- read.csv("heart-attack-risk-prediction-dataset.csv")
 heart_nomis <- na.omit(heart)
 
 factor_vars <- c(
@@ -95,12 +95,18 @@ test_data <- heart_nomis[-train_index, ]
 
 We completed a heart attack risk statistical analysis. Our objective was to help doctors better understand a patient’s heart attack risk. We wanted to build models to help predict risk and create a dashboard to visualize these predictions. This would allow a medical professional to be able to better understand the heart attack risk of a new patient based on their attributes.
 
+Our primary research question was if clinical markers could accurately predict heart attack risk. A secondary objective was to see if a dashboard and rule-based scoring system could be an effective alternative for providing clinical insight when there is weak model performance.
+
 ## Data 
 
-We used the "Heart Attack Risk Prediction Cleaned Dataset" from Kaggle. This dataset is designed for predicting heart attack risk. All numerical values were already normalized. There were 9,651 rows and 27 total columns. The dataset was already been cleaned with all data being in the same format, but we removed all rows with N/A. This reduced the data to 9,377 rows. We also made sure all binary variables were in the form of 0 or 1. The response variable we chose was "Heart Attack Risk (Binary)." The response variable is imbalanced with 64% being 0 and 36% being 1. As we began looking at correlations between potential predictors and the response variable, we quickly saw that our predictors were all very weak. For example here is the data for patients with previous heart problems and their risk. 
+We used the "Heart Attack Risk Prediction Cleaned Dataset" from Kaggle. This dataset is designed for predicting heart attack risk. All numerical values were already normalized. There were 9,651 rows and 27 total columns. The dataset had already been cleaned with all data being in the same format, but we removed all rows with N/A. This reduced the data to 9,377 rows. We also made sure all binary variables were in the form of 0 or 1. The response variable we chose was "Heart Attack Risk (Binary)." 
+
+## Exploratory Data Analysis
+
+The response variable is imbalanced with 64% being 0 and 36% being 1. As we began looking at correlations between potential predictors and the response variable, we quickly saw that our predictors were all very weak. For example here is the data for patients with previous heart problems and their risk. 
 
 ```{r, echo=FALSE}
-previous_prop <- table(heart_nomis$Previous.Heart.Problems, heart_nomis$Heart.Attack.Risk..Binary)
+previous_prop <- table(heart_nomis$Previous.Heart.Problems, heart_nomis$Heart.Attack.Risk..Binary.)
 
 dimnames(previous_prop) <- list(
   Previous = c("Yes (1)", "No (2)"),
@@ -111,6 +117,49 @@ previous_prop
 ```
 
 This shows that there is little to no differentiation between patients with previous heart problems and those without.
+
+Below are the graphs showing risk correlation for CK-MB and Troponin. These are two of the most clinically recognized biomarkers associated with cardiac injury and heart attack risk.
+
+```{r, echo=FALSE}
+ggplot(
+      heart_nomis,
+      aes(
+        x = Heart.Attack.Risk..Binary.,
+        y = CK.MB,
+        fill = Heart.Attack.Risk..Binary.
+      )
+    ) +
+      geom_boxplot(width = 0.54, alpha = 0.92, outlier.alpha = 0.35) +
+      scale_x_discrete(labels = c("0" = "Low Risk", "1" = "High Risk")) +
+      scale_fill_manual(values = c("0" = "#60a5fa", "1" = "#f87171")) +
+      labs(x = "Risk Group", y = "CK-MB") +
+      theme_minimal(base_size = 14) +
+      theme(
+        legend.position = "none",
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank()
+      )
+
+ggplot(
+      heart_nomis,
+      aes(
+        x = Heart.Attack.Risk..Binary.,
+        y = Troponin,
+        fill = Heart.Attack.Risk..Binary.
+      )
+    ) +
+      geom_boxplot(width = 0.54, alpha = 0.92, outlier.alpha = 0.35) +
+      scale_x_discrete(labels = c("0" = "Low Risk", "1" = "High Risk")) +
+      scale_fill_manual(values = c("0" = "#60a5fa", "1" = "#f87171")) +
+      labs(x = "Risk Group", y = "Troponin") +
+      theme_minimal(base_size = 14) +
+      theme(
+        legend.position = "none",
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank()
+      )
+```
+There is little to no correlation between high rates of troponin and CK-MB and high risk. 
 
 ## Statistical Process 
 
@@ -137,7 +186,7 @@ final_logistic <- glm(Heart.Attack.Risk..Binary. ~ Cholesterol + Diabetes + Obes
 
 pred_probs_final <- predict(final_logistic, type = "response")
 
-roc_obj <- roc(heart_nomis$Heart.Attack.Risk..Binary, pred_probs_final)
+roc_obj <- roc(heart_nomis$Heart.Attack.Risk..Binary., pred_probs_final)
 
 plot(roc_obj, col = "blue", main = "ROC Curve for Final Logistic Model")
 ```
@@ -275,6 +324,8 @@ We only used our main predictors in both the models and the scoring system so ev
 
 We added a feature where it pulls up the most similar patient from the original data. This feature further demonstrates the discrepancies in the data. Many times a patient was low-risk based on our rule-based formula, but the similar patient was marked as high risk in the data. This additionally allows the doctor to immediately be able to compare their current patient to previous data. 
 
+The dashboard code is included in the submission to document the full implementation of the analysis pipeline. 
+
 ## Conclusion 
 
-The poor performance across multiple models show that the predictors do not capture the factors leading to heart attack risk. Our rule-based scoring system was the most practical way to help a doctor analyze a patient's risk. Overall, this project is an example of having to work with bad data while still being able to provide analysis and an application tool. This statistical analysis can be used to work with future data that may have better predictability. 
+The poor performance across multiple models shows that the predictors do not capture the factors leading to heart attack risk. Our rule-based scoring system was the most practical way to help a doctor analyze a patient's risk. Overall, this project is an example of having to work with bad data while still being able to provide analysis and an application tool. This statistical analysis can be used to work with future data that may have better predictability. 
